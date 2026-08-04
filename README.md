@@ -3,6 +3,8 @@
 **Author:** Subhajit Kar (SK Sir)  
 **Domain:** Scalable LLMs, Hardware Acceleration & Green AI  
 
+A high-performance, memory-efficient implementation of **Decay-Gated $O(N)$ Causal Linear Attention** featuring custom fused Triton state-accumulation kernels and an FP32 Master Accumulator to eliminate numerical instability in long-context sequences.
+
 ---
 
 ## 📌 Executive Summary
@@ -54,9 +56,10 @@ Accuracy evaluation at 16,384 tokens with target needle inserted at 75% depth:
 
 ---
 
-## 📁 Repository Structure
-* `Linear_Attention_Project.py`: Full PyTorch implementation with decay-gated state projections.
-* `triton_kernel.py`: Custom fused Triton/CUDA C++ kernel implementation for SRAM register execution.
-* `benchmark.py`: GPU VRAM, Latency, and NIAH precision testing suite.
-* `Linear_Attention_Research_Paper.pdf`: Technical paper, mathematical proofs, and hardware profile.
-*
+## 💻 Quickstart & Integration
+
+### Installation
+```bash
+pip install torch triton
+git clone [https://github.com/sksir288/Linear-Attention-ON-Precision-Bridge.git](https://github.com/sksir288/Linear-Attention-ON-Precision-Bridge.git)
+cd Linear-Attention-ON-Precision-Bridge
