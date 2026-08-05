@@ -1,20 +1,22 @@
 import torch
-from triton_kernel import FusedLinearAttention
+from naive import naive_decay_gated_attention
 
+# Parameters
 batch_size = 1
-seq_len = 131072  # 128K Context
+num_heads = 4
+seq_len = 512
 dim = 64
-num_heads = 8
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-q = torch.randn(batch_size, num_heads, seq_len, dim, device=device, dtype=torch.float16)
-k = torch.randn(batch_size, num_heads, seq_len, dim, device=device, dtype=torch.float16)
-v = torch.randn(batch_size, num_heads, seq_len, dim, device=device, dtype=torch.float16)
+# Setup sample inputs
+q = torch.randn(batch_size, num_heads, seq_len, dim, device=device)
+k = torch.randn(batch_size, num_heads, seq_len, dim, device=device)
+v = torch.randn(batch_size, num_heads, seq_len, dim, device=device)
+g = torch.randn(batch_size, num_heads, seq_len, dim, device=device)
 
-attention_layer = FusedLinearAttention(dim=dim, num_heads=num_heads).to(device)
+# Execute Naive Canonical Operator
+output = naive_decay_gated_attention(q, k, v, g)
 
-with torch.no_grad():
-    output = attention_layer(q, k, v)
-
-print(f"Execution Successful! Output shape: {output.shape}")
+print(f"✅ Canonical Reference Execution Successful!")
+print(f"Output Tensor Shape: {output.shape}")
