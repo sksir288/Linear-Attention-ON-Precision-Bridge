@@ -1,6 +1,40 @@
 import torch
 import triton
 import triton.language as tl
+from torch.autograd.function import once_differentiable
+
+def _validate_inputs(q, k, v, g):
+    tensors = (q, k, v, g)
+
+    if not all(x.ndim == 4 for x in tensors):
+        raise ValueError("q, k, v, and g must all be rank-4 tensors")
+
+    if q.shape != k.shape or q.shape != v.shape:
+        raise ValueError("q, k, and v must have identical shapes")
+
+    B, H, T, D = q.shape
+
+    if g.shape[:3] != (B, H, T):
+        raise ValueError("g must match q in batch, head, and sequence dimensions")
+
+    if g.shape[-1] not in (1, D):
+        raise ValueError("g must have shape [B, H, T, 1] or [B, H, T, D]")
+
+    if not all(x.is_cuda for x in tensors):
+        raise ValueError("all inputs must be CUDA tensors")
+
+    if len({x.device for x in tensors}) != 1:
+        raise ValueError("all inputs must be on the same CUDA device")
+
+    if not all(x.is_floating_point() for x in tensors):
+        raise TypeError("all inputs must use floating-point dtypes")
+
+    if B == 0 or H == 0 or T == 0:
+        raise ValueError("empty batch, head, or sequence dimensions are not supported")
+
+    if D not in (32, 64, 128):
+        raise ValueError("D must be one of 32, 64, or 128")
+
 
 @triton.jit
 def _fused_decay_linear_attention_kernel(
@@ -45,17 +79,16 @@ def _fused_decay_linear_attention_kernel(
 
         out = tl.sum(q_act[:, None] * S, axis=0)
 
-        # Retain input precision instead of forced FP16 truncation
         tl.store(o_ptrs, out)
 
 
 class DecayGatedLinearAttentionFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, q, k, v, g):
+        _validate_inputs(q, k, v, g)
+
         B, H, T, D = q.shape
-        assert D in {32, 64, 128}, "Dimension must be power of 2 (32, 64, 128)"
         
-        # Handle scalar gate shape [B, H, T, 1] via explicit contiguous broadcast
         if g.shape[-1] == 1:
             g = g.expand(-1, -1, -1, D).contiguous()
             
@@ -75,6 +108,7 @@ class DecayGatedLinearAttentionFunction(torch.autograd.Function):
         return out
 
     @staticmethod
+    @once_differentiable
     def backward(ctx, grad_out):
         q, k, v, g = ctx.saved_tensors
         with torch.enable_grad():
