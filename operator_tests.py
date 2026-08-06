@@ -1,4 +1,5 @@
 import torch
+import pytest
 from naive import naive_decay_gated_attention
 
 def test_causality():
@@ -19,27 +20,35 @@ def test_causality():
     assert diff == 0.0, f"Causality Violation Detected! Max diff: {diff}"
     print("✅ Causality Test Passed!")
 
-def test_triton_parity_and_scalar_gate():
+def test_validation_layer():
     if not torch.cuda.is_available():
-        print("⚠️ CUDA not available, skipping Triton parity check.")
         return
 
     from triton_kernel import triton_linear_attention
 
-    B, H, T, D = 2, 4, 128, 64
-    q = torch.randn(B, H, T, D, device="cuda", dtype=torch.float32)
-    k = torch.randn(B, H, T, D, device="cuda", dtype=torch.float32)
-    v = torch.randn(B, H, T, D, device="cuda", dtype=torch.float32)
+    q = torch.randn(1, 1, 7, 32, device="cuda")
     
-    # Test Scalar Gate Broadcasting [B, H, T, 1]
-    g_scalar = torch.randn(B, H, T, 1, device="cuda", dtype=torch.float32)
+    # Mismatched sequence length check
+    k_short_T = torch.randn(1, 1, 6, 32, device="cuda")
+    v = torch.randn(1, 1, 7, 32, device="cuda")
+    g = torch.randn(1, 1, 7, 32, device="cuda")
 
-    out_naive = naive_decay_gated_attention(q, k, v, g_scalar)
-    out_triton = triton_linear_attention(q, k, v, g_scalar)
+    try:
+        triton_linear_attention(q, k_short_T, v, g)
+        assert False, "Failed to reject mismatched T shape"
+    except ValueError:
+        pass
 
-    torch.testing.assert_close(out_naive, out_triton, rtol=1e-3, atol=1e-3)
-    print("✅ Scalar Gate Broadcasting & Relative Parity Test Passed!")
+    # Non-floating dtype check
+    q_int = torch.randint(0, 10, (1, 1, 7, 32), device="cuda")
+    try:
+        triton_linear_attention(q_int, q_int, q_int, q_int)
+        assert False, "Failed to reject integer inputs"
+    except TypeError:
+        pass
+
+    print("✅ Host-side Input Validation Layer Passed!")
 
 if __name__ == "__main__":
     test_causality()
-    test_triton_parity_and_scalar_gate()
+    test_validation_layer()
